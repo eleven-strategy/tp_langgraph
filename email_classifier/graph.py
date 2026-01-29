@@ -7,40 +7,41 @@ A LangGraph **graph** connects nodes with edges to form a workflow.
 Key concepts:
   - StateGraph(StateClass)       -- create a graph bound to a state schema
   - graph.add_node(name, fn)     -- register a node function
-  - graph.set_entry_point(name)  -- which node runs first
+  - graph.add_edge(START, name)  -- set which node runs first
   - graph.add_edge(a, b)         -- after node a, always go to node b
   - graph.add_conditional_edges(
         source,                  -- the node whose output we inspect
         routing_fn,              -- a function that returns the next node name
         path_map                 -- dict mapping return values -> node names
     )
-  - END                          -- special constant meaning "stop the graph"
+  - START                        -- special constant: the graph's entry point
+  - END                          -- special constant: stop the graph
   - graph.compile()              -- finalize and return a runnable graph
 
-TODO: complete the three TODOs in build_email_classifier() below.
+TODO: complete the two TODOs in build_email_classifier() below.
 """
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, START, END
 from email_classifier.state import EmailState
 from email_classifier.nodes import (
     check_urls,
     analyze_content,
-    classify_email,
     generate_response,
 )
 
 
 # ---------- Routing function (provided) ----------
 
-def route_after_analysis(state: dict) -> str:
-    """Decide the next node after analyze_content.
+def route_after_urls(state: EmailState) -> str:
+    """Decide the next node after check_urls.
 
-    If the URL check already found malicious URLs, skip classification
-    and go straight to generate_response. Otherwise, go to classify_email.
+    If malicious URLs were found, skip straight to generate_response
+    (threat_level is already set to "dangerous" by check_urls).
+    Otherwise, continue to analyze_content.
     """
-    if not state.get("url_check_result", {}).get("safe", True):
+    if state.url_check_result and not state.url_check_result["safe"]:
         return "generate_response"
-    return "classify_email"
+    return "analyze_content"
 
 
 # ---------- Graph builder ----------
@@ -50,34 +51,30 @@ def build_email_classifier():
 
     The graph looks like this:
 
-        check_urls ──> analyze_content ──?──> classify_email ──> generate_response ──> END
-                                         │                              ▲
-                                         └── (malicious URLs) ─────────┘
+        check_urls ──?──> analyze_content ──> generate_response ──> END
+                     │                                ▲
+                     └── (malicious URLs) ────────────┘
     """
     workflow = StateGraph(EmailState)
 
     # -- Nodes --
     workflow.add_node("check_urls", check_urls)
-    workflow.add_node("analyze_content", analyze_content)
-    # TODO: add the "classify_email" node
+    # TODO: add the "analyze_content" node
     workflow.add_node("generate_response", generate_response)
 
-    # -- Entry point --
-    workflow.set_entry_point("check_urls")
-
     # -- Edges --
-    workflow.add_edge("check_urls", "analyze_content")
+    workflow.add_edge(START, "check_urls")
 
     workflow.add_conditional_edges(
-        "analyze_content",
-        route_after_analysis,
+        "check_urls",
+        route_after_urls,
         {
-            "classify_email": "classify_email",
+            "analyze_content": "analyze_content",
             "generate_response": "generate_response",
         },
     )
 
-    # TODO: add a normal edge from "classify_email" to "generate_response"
+    # TODO: add a normal edge from "analyze_content" to "generate_response"
 
     workflow.add_edge("generate_response", END)
 

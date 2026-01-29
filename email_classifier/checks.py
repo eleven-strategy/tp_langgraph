@@ -32,31 +32,30 @@ def check_part1():
     print("\n=== Part 1 PASSED ===")
 
 
-def check_classify_email():
-    """Verify classify_email returns correct threat levels."""
+def check_analyze_content():
+    """Verify analyze_content returns content_analysis and threat_level."""
     import email_classifier.nodes
     importlib.reload(email_classifier.nodes)
-    from email_classifier.nodes import classify_email
+    from email_classifier.nodes import analyze_content
+    from email_classifier.state import EmailState
 
-    result_d = classify_email({
-        "url_check_result": {"safe": False, "flagged_urls": ["x"]},
-        "content_analysis": {"is_suspicious": False},
-    })
-    assert result_d["threat_level"] == "dangerous", f"Expected 'dangerous', got '{result_d['threat_level']}'"
-
-    result_s = classify_email({
-        "url_check_result": {"safe": True, "flagged_urls": []},
-        "content_analysis": {"is_suspicious": True},
-    })
+    # Test: suspicious content
+    result_s = analyze_content(EmailState(
+        subject="URGENT: Act now!",
+        body="You must act now before your account expires in 24 hours.",
+    ))
+    assert "content_analysis" in result_s, "Must return key 'content_analysis'"
+    assert "threat_level" in result_s, "Must return key 'threat_level'"
     assert result_s["threat_level"] == "suspicious", f"Expected 'suspicious', got '{result_s['threat_level']}'"
 
-    result_ok = classify_email({
-        "url_check_result": {"safe": True, "flagged_urls": []},
-        "content_analysis": {"is_suspicious": False},
-    })
+    # Test: safe content
+    result_ok = analyze_content(EmailState(
+        subject="Team meeting tomorrow",
+        body="Hi team, just a reminder about our meeting at 10am.",
+    ))
     assert result_ok["threat_level"] == "safe", f"Expected 'safe', got '{result_ok['threat_level']}'"
 
-    print("=== classify_email PASSED ===")
+    print("=== analyze_content PASSED ===")
 
 
 def check_generate_response():
@@ -64,9 +63,10 @@ def check_generate_response():
     import email_classifier.nodes
     importlib.reload(email_classifier.nodes)
     from email_classifier.nodes import generate_response
+    from email_classifier.state import EmailState
 
     for level in ["dangerous", "suspicious", "safe"]:
-        result = generate_response({"threat_level": level})
+        result = generate_response(EmailState(threat_level=level))
         assert isinstance(result, dict), "generate_response must return a dict"
         assert "response" in result, "Must return key 'response'"
         assert isinstance(result["response"], str) and len(result["response"]) > 0, (
